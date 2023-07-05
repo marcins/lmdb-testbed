@@ -17,13 +17,13 @@ async function create(workerApi, { cacheRef }) {
     const blob = Buffer.from(data);
     const key = hashBuffer(blob);
     await cache.setBlob(key, blob);
-    await new Promise(resolve => setTimeout(resolve, 0));
     return { key };
 }
 
 async function read(workerApi, { key, cacheRef }) {
     const cache = workerApi.getSharedReference(cacheRef);
     try {
+        // cache.store.resetReadTxn();
         const blob = await cache.getBlob(key);
         return blob && blob.length === BLOB_SIZE;
     } catch (e) {

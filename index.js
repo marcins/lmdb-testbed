@@ -9,7 +9,7 @@ const { rimraf } = require("rimraf");
 let retries = 0;
 let successes = 0;
 
-const RUNS = 100;
+const RUNS = 5;
 const MAX_TIME = 1000;
 const CONCURRENCY = 1000;
 const WORKERS = 20;
