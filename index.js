@@ -6,6 +6,13 @@ const logger = require("@parcel/logger").default;
 const { prettyDiagnostic, PromiseQueue } = require("@parcel/utils");
 const { rimraf } = require("rimraf");
 
+let retries = 0;
+let successes = 0;
+
+const MAX_TIME = 1000;
+const CONCURRENCY = 200;
+const WORKERS = 4;
+
 async function validate({ handle, cache, cacheRef }) {
     const { hash } = await handle({ cacheRef });
     console.log(`${performance.now()}: Getting data with key ${hash}`);
@@ -20,16 +27,18 @@ async function validate({ handle, cache, cacheRef }) {
                 cache.getBlob(hash).then(v => {
                     buffer = v;
                     retried = true;
+                    retries++;
                     resolve();
                 });
-            }, 1000);
+            }, 0);
         });
         
     }
     assert(buffer.length === 10000);
-    if (retried) {
-        throw new Error(`Worked only after a retry ${hash}`);
-    }
+    successes++;
+    // if (retried) {
+    //     throw new Error(`Worked only after a retry ${hash}`);
+    // }
     return true;
 }
 
@@ -46,8 +55,8 @@ async function main() {
     console.log(`${performance.now()}: workerfarm init`);
     const farm = new WorkerFarm({
         backend: "threads",
-        maxConcurrentWorkers: 4,
-        maxConcurrentCallsPerWorker: 200,
+        maxConcurrentWorkers: WORKERS,
+        maxConcurrentCallsPerWorker: CONCURRENCY,
         workerPath: require.resolve("./worker"),
         forcedKillTime: 500,
         useLocalWorker: false,
@@ -61,7 +70,7 @@ async function main() {
     // Produce requests in batches until we crash.. :P
     while (true) {
         const queue = new PromiseQueue({
-            maxConcurrent: 200,
+            maxConcurrent: CONCURRENCY,
         });
 
         for (let i = 0; i < 20000; i++) {
@@ -70,13 +79,13 @@ async function main() {
 
         await queue.run();
         console.log("Batch done...");
-        if (performance.now() > 10000) {
+        if (performance.now() > MAX_TIME) {
             break;
         }
     }
     console.log("Shutting down farm...");
     await farm.end();
-    console.log("Done!");
+    console.log(`Done! Total reads: ${successes} Retries? ${retries}`);
 }
 
 main().catch((e) => {
