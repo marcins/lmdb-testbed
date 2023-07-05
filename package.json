@@ -1,0 +1,19 @@
+{
+  "name": "lmdb-testbed",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@parcel/cache": "^2.9.3",
+    "@parcel/core": "^2.9.3",
+    "@parcel/hash": "^2.9.3",
+    "@parcel/workers": "^2.9.3",
+    "rimraf": "^5.0.1",
+    "typescript": "^5.1.6"
+  },
+  "devDependencies": {
+    "@parcel/types": "^2.9.3",
+    "@types/node": "^20.3.3",
+    "ts-node": "^10.9.1"
+  }
+}
