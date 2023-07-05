@@ -5,46 +5,56 @@ const path = require("node:path");
 const logger = require("@parcel/logger").default;
 const { prettyDiagnostic, PromiseQueue } = require("@parcel/utils");
 const { rimraf } = require("rimraf");
+const { LMDBCache } = require("@parcel/cache");
 
 let retries = 0;
 let successes = 0;
 
-const MAX_TIME = 1000;
+const MAX_TIME = 10000;
 const CONCURRENCY = 200;
 const BATCH_SIZE = 20000;
 const WORKERS = 4;
 
+const CACHE_IMPL = "parcel";
+
 async function validate({ handle, cache, cacheRef }) {
-    const { hash } = await handle();
-    console.log(`${performance.now()}: Getting data with key ${hash}`);
+    const { hash } = await handle({ cacheRef });
+    // console.log(`${performance.now()}: Getting data with key ${hash}`);
     let buffer;
     let retried = false;
     // await new Promise(resolve => setTimeout(resolve, 0));
-    buffer = cache.get(hash);
-    if (buffer == null) {
-        try {
-            await new Promise((resolve, reject) => {
-                // setTimeout(() => {
-                    console.log(
-                        `${performance.now()}: Retrying data with key ${hash}`
-                    );
-                    buffer = cache.get(hash);
-                    if (buffer == null) {
-                        reject(
-                            new Error(`Still failed to get ${hash} after retry`)
-                        );
-                        return;
-                    }
-                        retries += 1;
-                        retried = true;
-                        resolve();
-            });
-        } catch (e) {
-            console.log(e.message);
-        }
+    if (CACHE_IMPL === "parcel") {
+        buffer = await cache.getBlob(hash);
+    } else {
+        buffer = cache.get(hash);
     }
+    // if (buffer == null) {
+    //     try {
+    //         await new Promise((resolve, reject) => {
+    //             // setTimeout(() => {
+    //                 console.log(
+    //                     `${performance.now()}: Retrying data with key ${hash}`
+    //                 );
+    //                 buffer = cache.get(hash);
+    //                 if (buffer == null) {
+    //                     reject(
+    //                         new Error(`Still failed to get ${hash} after retry`)
+    //                     );
+    //                     return;
+    //                 }
+    //                     retries += 1;
+    //                     retried = true;
+    //                     resolve();
+    //         });
+    //     } catch (e) {
+    //         console.log(e.message);
+    //     }
+    // }
     assert(buffer.length === 10000);
     successes += 1;
+    if (successes % 1000 === 0) {
+        console.log(`Successes: ${successes} Retries: ${retries}`);
+    }
     // if (retried) {
     //     throw new Error(`Worked only after a retry ${hash}`);
     // }
@@ -53,11 +63,6 @@ async function validate({ handle, cache, cacheRef }) {
 
 async function main() {
     await rimraf("./cache");
-    const cache = db.open("./cache", {
-        compression: true,
-        encoding: "binary",
-        name: "parcel-cache",
-    });
     logger.onLog(async (event) => {
         if (event.level === "error") {
             console.log(await prettyDiagnostic(event.diagnostics[0]));
@@ -77,6 +82,19 @@ async function main() {
         shouldPatchConsole: false,
     });
 
+    let cache, cacheRef;
+    if (CACHE_IMPL === "parcel") {
+        cache = new LMDBCache("./cache");
+        cacheRef = (await farm.createSharedReference(cache)).ref;
+    } else {
+        cache = db.open("./cache", {
+            compression: true,
+            encoding: "binary",
+            name: "parcel-cache",
+        });    
+    }
+
+
     const handle = await farm.createHandle("run", false);
 
     // Produce requests in batches until we crash.. :P
@@ -86,7 +104,7 @@ async function main() {
         });
 
         for (let i = 0; i < BATCH_SIZE; i++) {
-            queue.add(() => validate({ handle, cache }));
+            queue.add(() => validate({ handle, cache, cacheRef }));
         }
 
         await queue.run();
