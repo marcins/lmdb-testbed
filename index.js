@@ -63,6 +63,16 @@ async function validate({ handle, cache, cacheRef }) {
 
 async function main() {
     await rimraf("./cache");
+    let cache;
+    if (CACHE_IMPL === "parcel") {
+        cache = new LMDBCache("./cache");
+    }  else {
+        cache = db.open("./cache", {
+            compression: true,
+            encoding: "binary",
+            name: "parcel-cache",
+        });    
+    }
     logger.onLog(async (event) => {
         if (event.level === "error") {
             console.log(await prettyDiagnostic(event.diagnostics[0]));
@@ -82,18 +92,10 @@ async function main() {
         shouldPatchConsole: false,
     });
 
-    let cache, cacheRef;
+    let cacheRef;
     if (CACHE_IMPL === "parcel") {
-        cache = new LMDBCache("./cache");
         cacheRef = (await farm.createSharedReference(cache)).ref;
-    } else {
-        cache = db.open("./cache", {
-            compression: true,
-            encoding: "binary",
-            name: "parcel-cache",
-        });    
     }
-
 
     const handle = await farm.createHandle("run", false);
 
