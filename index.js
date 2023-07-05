@@ -34,7 +34,7 @@ async function validate({ handle, cache, cacheRef }) {
 }
 
 async function main() {
-    rimraf("./cache");
+    await rimraf("./cache");
     const cache = new LMDBCache("./cache");
     logger.onLog(async (event) => {
         if (event.level === "error") {
