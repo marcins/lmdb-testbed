@@ -15,7 +15,7 @@ const CONCURRENCY = 200;
 const BATCH_SIZE = 20000;
 const WORKERS = 4;
 
-const CACHE_IMPL = "parcel";
+const CACHE_IMPL = "lmdb";
 
 async function validate({ handle, cache, cacheRef }) {
     const { hash } = await handle({ cacheRef });
@@ -23,33 +23,40 @@ async function validate({ handle, cache, cacheRef }) {
     let buffer;
     let retried = false;
     // await new Promise(resolve => setTimeout(resolve, 0));
-    if (CACHE_IMPL === "parcel") {
-        buffer = await cache.getBlob(hash);
-    } else {
-        buffer = cache.get(hash);
+    try {
+        if (CACHE_IMPL === "parcel") {
+            buffer = await cache.getBlob(hash);
+        } else {
+            buffer = cache.get(hash);
+        }    
+        if (buffer == null) {
+            throw new Error(`Key ${key} not found in cache`);
+        }
+    } catch (e) {
+        await new Promise(resolve => {
+            setTimeout(() => {
+                console.log(`${performance.now()}: Retrying data with key ${hash}`);
+                if (CACHE_IMPL === 'parcel') {
+                    cache.getBlob(hash).then(v => {
+                        buffer = v;
+                        retried = true;
+                        retries++;
+                        resolve();
+                    });
+                } else {
+                    buffer = cache.get(hash);
+                    if (buffer != null) {
+                        retried = true;
+                        retries++;
+                        resolve();
+                    } else {
+                        reject('Still failed');
+                    }
+                }
+            }, 0);
+        });
     }
-    // if (buffer == null) {
-    //     try {
-    //         await new Promise((resolve, reject) => {
-    //             // setTimeout(() => {
-    //                 console.log(
-    //                     `${performance.now()}: Retrying data with key ${hash}`
-    //                 );
-    //                 buffer = cache.get(hash);
-    //                 if (buffer == null) {
-    //                     reject(
-    //                         new Error(`Still failed to get ${hash} after retry`)
-    //                     );
-    //                     return;
-    //                 }
-    //                     retries += 1;
-    //                     retried = true;
-    //                     resolve();
-    //         });
-    //     } catch (e) {
-    //         console.log(e.message);
-    //     }
-    // }
+
     assert(buffer.length === 10000);
     successes += 1;
     if (successes % 1000 === 0) {

@@ -7,8 +7,8 @@ const { LMDBCache } = require("@parcel/cache");
 
 console.log(`${performance.now()}: worker init`);
 
-const CACHE_IMPL = "parcel";
-
+const CACHE_IMPL = "lmdb";
+const SHOULD_LOG = true;
 const BLOB_SIZE = 10000;
 
 let cache;
@@ -33,13 +33,17 @@ async function run(workerApi, { cacheRef }) {
     }
     const blob = Buffer.from(data);
     const key = hashBuffer(blob);
-    // console.log(`${performance.now()}: Setting data with key ${key}`);
+    if (SHOULD_LOG) {
+        console.log(`${performance.now()}: Setting data with key ${key}`);
+    }
     if (CACHE_IMPL === "parcel") {
         await cache.setBlob(key, blob);
     } else {
         await cache.put(key, blob);
     }
-    // console.log(`${performance.now()}: Committed data with key ${key}`);
+    if (SHOULD_LOG) {
+        console.log(`${performance.now()}: Committed data with key ${key}`);
+    }
     return { hash: key };
 }
 
