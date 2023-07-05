@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "scripts": {
+    "test": "node index.js"
+  },
   "dependencies": {
     "@parcel/cache": "^2.9.3",
     "@parcel/core": "^2.9.3",

@@ -1,7 +1,6 @@
 const { LMDBCache } = require("@parcel/cache");
 const WorkerFarm = require("@parcel/workers").default;
 const assert = require("node:assert");
-const path = require("node:path");
 const logger = require("@parcel/logger").default;
 const { prettyDiagnostic, PromiseQueue } = require("@parcel/utils");
 const { rimraf } = require("rimraf");
@@ -9,9 +8,10 @@ const { rimraf } = require("rimraf");
 let retries = 0;
 let successes = 0;
 
-const MAX_TIME = 1000;
-const CONCURRENCY = 200;
-const WORKERS = 4;
+const MAX_TIME = 10000;
+const CONCURRENCY = 500;
+const BATCH_SIZE = 20000;
+const WORKERS = 8;
 
 async function validate({ handle, cache, cacheRef }) {
     const { hash } = await handle({ cacheRef });
@@ -73,7 +73,7 @@ async function main() {
             maxConcurrent: CONCURRENCY,
         });
 
-        for (let i = 0; i < 20000; i++) {
+        for (let i = 0; i < BATCH_SIZE; i++) {
             queue.add(() => validate({ handle, cache, cacheRef }));
         }
 
@@ -86,6 +86,7 @@ async function main() {
     console.log("Shutting down farm...");
     await farm.end();
     console.log(`Done! Total reads: ${successes} Retries? ${retries}`);
+    assert.equal(retries, 0, 'Expected to complete without needing retries');
 }
 
 main().catch((e) => {
