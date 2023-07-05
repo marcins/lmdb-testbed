@@ -9,10 +9,11 @@ const { rimraf } = require("rimraf");
 let retries = 0;
 let successes = 0;
 
+const RUNS = 100;
 const MAX_TIME = 1000;
-const CONCURRENCY = 200;
-const WORKERS = 4;
-const BATCH_SIZE = 20000;
+const CONCURRENCY = 1000;
+const WORKERS = 20;
+const BATCH_SIZE = 5000;
 
 async function validate({ handle, cache, cacheRef }) {
     const { hash } = await handle({ cacheRef });
@@ -22,10 +23,12 @@ async function validate({ handle, cache, cacheRef }) {
     try {
         buffer = await cache.getBlob(hash);
     } catch (e) {
-        await new Promise(resolve => {
+        await new Promise((resolve) => {
             setTimeout(() => {
-                console.log(`${performance.now()}: Retrying data with key ${hash}`);
-                cache.getBlob(hash).then(v => {
+                console.log(
+                    `${performance.now()}: Retrying data with key ${hash}`
+                );
+                cache.getBlob(hash).then((v) => {
                     buffer = v;
                     retried = true;
                     retries++;
@@ -33,7 +36,6 @@ async function validate({ handle, cache, cacheRef }) {
                 });
             }, 0);
         });
-        
     }
     assert(buffer.length === 10000);
     successes++;
@@ -43,7 +45,7 @@ async function validate({ handle, cache, cacheRef }) {
     return true;
 }
 
-async function main() {
+async function reproduction() {
     await rimraf("./cache");
     const cache = new LMDBCache("./cache");
     logger.onLog(async (event) => {
@@ -53,7 +55,6 @@ async function main() {
             console.log(event.message);
         }
     });
-    console.log(`${performance.now()}: workerfarm init`);
     const farm = new WorkerFarm({
         backend: "threads",
         maxConcurrentWorkers: WORKERS,
@@ -66,27 +67,52 @@ async function main() {
     });
 
     const { ref: cacheRef } = await farm.createSharedReference(cache);
-    const handle = await farm.createHandle("run", false);
+    const createHandle = await farm.createHandle("create", false);
+    const readHandle = await farm.createHandle("read", false);
 
-    // Produce requests in batches until we crash.. :P
+    let failures = 0;
     while (true) {
         const queue = new PromiseQueue({
             maxConcurrent: CONCURRENCY,
         });
 
         for (let i = 0; i < BATCH_SIZE; i++) {
-            queue.add(() => validate({ handle, cache, cacheRef }));
+            queue.add(async () => {
+                const { key } = await createHandle({ cacheRef });
+                const result = await readHandle({ cacheRef, key });
+                if (result) {
+                    successes++;
+                } else {
+                    failures++;
+                }
+            });
         }
 
         await queue.run();
-        console.log("Batch done...");
-        if (performance.now() > MAX_TIME) {
+        if (performance.now() > MAX_TIME || failures > 0) {
             break;
         }
     }
-    console.log("Shutting down farm...");
     await farm.end();
-    console.log(`Done! Total reads: ${successes} Retries? ${retries}`);
+    return failures;
+}
+
+async function main() {
+    let successful = 0;
+    let failed = 0;
+    for (let i = 0; i < RUNS; i++) {
+        console.log(
+            `Run ${i + 1} of ${RUNS} (Success: ${successful} Failed: ${failed})`
+        );
+        const failures = await reproduction();
+        if (failures === 0) {
+            successful++;
+        } else {
+            failed++;
+        }
+    }
+
+    console.log(`Successful: ${successful} Failed: ${failed}`);
 }
 
 main().catch((e) => {
